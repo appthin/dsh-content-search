@@ -4,7 +4,9 @@
  * Three pieces, each on a supported extension point:
  * - a search button in the conversation header's right-aligned utilities;
  * - a right-sidebar page tab (`contentSearch`) whose body is the search panel,
- *   opened through `ctx.sidebarRight.openTab`;
+ *   opened through `ctx.sidebarRight.openTab`. Its type is registered through
+ *   `ctx.inject(['sidebarRightTabs'], …)` because that registry is provided by
+ *   the right sidebar package and may well apply after this bundle;
  * - a locator that pages the session history back to a hit's `seq`
  *   (`ISession.loadThrough`) and then scrolls the Chat row that anchors it
  *   (`[data-chat-node-key]` on the row that owns the hit's `anchorSeq`).
@@ -918,15 +920,17 @@ window.__ModuleLoader__.load({
        * Resolve one client service defensively: the context `get` first, then
        * the property the providing package reflects onto the context.
        * @param name - the service name.
+       * @param from - the context to read from; defaults to this plugin's own.
        * @returns the service, or undefined when it is not loaded.
        */
-      function readService(name) {
+      function readService(name, from) {
+        const source = from === undefined ? ctx : from
         let service
         try {
-          if (typeof ctx.get === 'function') service = ctx.get(name)
+          if (typeof source.get === 'function') service = source.get(name)
         } catch (error) { service = undefined }
         if (service === undefined || service === null) {
-          try { service = ctx[name] } catch (error) { service = undefined }
+          try { service = source[name] } catch (error) { service = undefined }
         }
         return service
       }
@@ -936,9 +940,12 @@ window.__ModuleLoader__.load({
         return readService('sidebarRight')
       }
 
-      /** The right sidebar's tab-type registry, when it is loaded. */
-      function tabRegistry() {
-        return readService('sidebarRightTabs')
+      /**
+       * The right sidebar's tab-type registry, when it is loaded.
+       * @param from - the context to read from; defaults to this plugin's own.
+       */
+      function tabRegistry(from) {
+        return readService('sidebarRightTabs', from)
       }
 
       /** One translated string with a static fallback. */
@@ -1476,37 +1483,44 @@ window.__ModuleLoader__.load({
 
         // Stage one: the page type. Omitting `patterns` makes it a type opened by
         // kind, which is what the header button and the guide entries do.
-        const tabs = components.tabRegistry()
-        const tabsReady = tabs !== undefined && typeof tabs.register === 'function'
-        ctx.effect(() => {
-          if (!tabsReady) {
+        //
+        // The registry belongs to the right sidebar package, which may apply
+        // after this bundle: reading it once here would leave the panel without
+        // a type whenever that happened, and nothing would ever retry. `ctx.inject`
+        // waits for the service instead, and replays this registration both when
+        // the sidebar finally arrives and when it is replaced.
+        const registerTabType = scope => {
+          const tabs = components.tabRegistry(scope)
+          if (tabs === undefined || typeof tabs.register !== 'function') {
             console.error('content-search: the right sidebar tab registry is unavailable, so the panel has no tab type to open')
-            return undefined
+            return
           }
-          return tabs.register({
+
+          scope.effect(() => tabs.register({
             id: PANEL_ID,
             kind: PANEL_KIND,
             title: () => t('panelTitle'),
-          })
-        }, 'content-search: tab type')
+          }), 'content-search: tab type')
 
-        // Stage two: the type's body and chip title under its own id, plus the
-        // header button. The title seat is registered only when stage one found
-        // the registry, so its presence in the slot tree proves the type path ran.
-        ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
-          name: 'sidebar.right.pane.tab',
-          key: PANEL_ID,
-          locale: NS,
-        }, components.ContentSearchPanel))
+          // Stage two: the type's body and chip title under its own id. Both are
+          // part of the type, so they are registered exactly when it is.
+          scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
+            name: 'sidebar.right.pane.tab',
+            key: PANEL_ID,
+            locale: NS,
+          }, components.ContentSearchPanel))
 
-        if (tabsReady) {
-          ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+          scope.slots.inject('sidebar.right.pane.tab.title', () => scope.slots.register({
             name: 'sidebar.right.pane.tab.title',
             key: PANEL_ID,
             locale: NS,
           }, components.ContentSearchTabTitle))
         }
 
+        if (typeof ctx.inject === 'function') ctx.inject(['sidebarRightTabs'], registerTabType)
+        else registerTabType(ctx)
+
+        // The header button does not depend on the registry, so it always appears.
         ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
           name: 'conversation.session.header.utilities',
           id: 'content-search-button',

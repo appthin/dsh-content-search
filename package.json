@@ -1,6 +1,6 @@
 {
   "name": "dsh-content-search",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Search the current conversation — the loaded window or the whole history — highlight every keyword in yellow, and jump to a match.",
   "license": "MIT",

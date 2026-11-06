@@ -6,6 +6,24 @@ Every notable change to this plugin is recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-11-06
+
+### Fixed
+
+- **On DSH 0.2.2 the button stayed, but opening the panel answered
+  `sidebarRight: no tab type is registered as "contentSearch"`.**
+  The cause was not a renamed API but **when the registry was read**: the tab type registers into
+  `ctx.sidebarRightTabs`, a service the right sidebar package provides. 1.0.0 read it once inside
+  `apply`, kept `tabsReady = false` when it was not there yet, logged `tab registry is unavailable`,
+  and never retried; the chip title seat was gated on that same one-shot boolean. Under DSH 0.2.1 the
+  sidebar happened to activate first, so it worked by luck; 0.2.2 changed the activation order and it
+  broke for good. **A race, not a compatibility break** — the same package lives or dies on 0.2.2
+  depending on which side wins.
+  It now uses `ctx.inject(['sidebarRightTabs'], …)`: registration waits for the service and runs when
+  it arrives, and cordis disposes and replays it if the provider is replaced. Contexts without
+  `ctx.inject` still register immediately. The header button never depended on the registry and keeps
+  appearing either way.
+
 ## [1.0.0] - 2026-11-05
 
 First release. What follows records what shipped — and, more usefully, **the defects live testing

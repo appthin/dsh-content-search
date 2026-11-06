@@ -6,6 +6,21 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-11-06
+
+### Fixed
+
+- **升到 DSH 0.2.2 后按钮还在，打开面板却报
+  `sidebarRight: no tab type is registered as "contentSearch"`。**
+  根因不是接口改名，而是**读注册表的时机**：标签类型要注册进 `ctx.sidebarRightTabs`，这个服务由
+  右边栏插件提供。1.0.0 在 `apply` 里只读一次，读不到就记下 `tabsReady = false`、打印
+  `tab registry is unavailable`，此后再无任何重试路径；标签体的标题席位也被同一个一次性布尔量挡住。
+  DSH 0.2.1 下两个插件恰好是右边栏先激活，所以一直侥幸可用；0.2.2 的激活先后一变，就成了永久失效。
+  **这是竞态，不是兼容性破坏**——同一个包在 0.2.2 上，慢一步就死、快一步就活。
+  现在改成 `ctx.inject(['sidebarRightTabs'], …)`：服务没到就等，到了再注册；提供方换实例时
+  Cordis 会先卸载旧注册再重跑回调。没有 `ctx.inject` 的上下文仍退回「立即注册」。
+  表头按钮不依赖注册表，两种情况都照常出现。
+
 ## [1.0.0] - 2026-11-05
 
 首个发布版。下面记的是这个版本实现了什么，以及**在它成为 1.0.0 之前被实测打回来的几处**——
